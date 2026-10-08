@@ -20,5 +20,6 @@ logging_steps: 10
 save_steps: 1000000
 plot_loss: true
 
-preprocessing_num_workers: 8
+preprocessing_num_workers: 1
+report_to: none
 overwrite_cache: false
