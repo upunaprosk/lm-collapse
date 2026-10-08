@@ -1,0 +1,43 @@
+output_dir: data/processed/wikipedia
+
+dataset:
+  kind: wikipedia
+  dataset_name: wikimedia/wikipedia
+  dataset_config_name: 20231101.en
+  revision: null
+
+  text_column: text
+  id_column: id
+
+  splits:
+    train: train
+
+  preserve_columns:
+    - title
+    - url
+
+  min_document_chars: 200
+  max_documents_per_split: null
+
+  holdout_fraction: 0.01
+  holdout_split_name: validation
+  split_seed: 2026
+
+  reference_tokenizer: Qwen/Qwen2.5-0.5B
+
+  chunking:
+    chunk_tokens: 512
+    min_chunk_tokens: 128
+    drop_short_final_chunk: true
+
+seed_policy:
+  reference_tokenizer: Qwen/Qwen2.5-0.5B
+
+  target_generated_fraction: 0.50
+
+  min_seed_tokens: 192
+  max_seed_tokens: 320
+  candidate_step: 8
+  min_suffix_tokens: 64
+
+  aggregation: token_weighted

@@ -1,0 +1,72 @@
+experiment:
+  name: smol_wiki_recursive
+  seed: 42
+  iterations: 4
+
+model:
+  name: HuggingFaceTB/SmolLM2-360M
+  tokenizer_name_or_path: HuggingFaceTB/SmolLM2-360M
+  human_checkpoint: runs/human_checkpoints/smollm2_360m_wiki/checkpoint
+
+dataset:
+  prepared_dir: data/processed/wikipedia
+
+generation:
+  temperature: 0.9
+  top_p: 0.9
+  repetition_penalty: 1.1
+  max_new_tokens: 320
+  min_new_tokens: 1
+  batch_size: 16
+  torch_dtype: auto
+  device_map: auto
+  add_special_tokens: false
+  max_prompt_tokens: null
+  keep_ineligible_human: true
+
+training:
+  tokenizer_name_or_path: HuggingFaceTB/SmolLM2-360M
+
+  budget:
+    cutoff_len: 512
+    per_device_train_batch_size: 2
+    gradient_accumulation_steps: 16
+    world_size: 1
+    corpus_equivalents: 1.0
+    add_special_tokens: false
+    add_eos_per_document: true
+
+  llamafactory:
+    base_yaml_path: configs/training/full_pretrain.yaml
+    executable: llamafactory-cli
+    text_column: text
+    dataset_prompt_field: prompt
+    overwrite_output_dir: false
+    stream_logs: true
+
+  extra_overrides:
+    learning_rate: 5.0e-5
+    warmup_ratio: 0.1
+    weight_decay: 0.1
+    lr_scheduler_type: cosine
+
+evaluation:
+  human_eval_path: data/processed/wikipedia/validation.jsonl
+
+  perplexity:
+    batch_size: 8
+    max_length: 512
+    stride: 256
+    add_special_tokens: false
+    add_eos_per_document: true
+    torch_dtype: auto
+    device_map: auto
+
+  mmlu:
+    task: mmlu
+    num_fewshot: 5
+    batch_size: auto
+    device: cuda:0
+    dtype: bfloat16
+    log_samples: true
+    apply_chat_template: false

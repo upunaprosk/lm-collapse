@@ -1,0 +1,18 @@
+name: contamination_fraction_ablation
+
+base_protocol: configs/protocols/main_bios.yaml
+
+synthetic_document_fractions:
+  - 0.25
+  - 0.50
+  - 0.75
+  - 1.00
+
+fixed:
+  temperature: 0.9
+  target_generated_token_fraction_within_selected_documents: 0.50
+  iterations: 4
+
+sampling:
+  stratify_by: profession_id
+  seed: 4242

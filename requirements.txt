@@ -1,0 +1,9 @@
+torch
+transformers
+datasets
+accelerate
+numpy
+scipy
+PyYAML
+tqdm
+lm_eval[hf]

@@ -1,0 +1,5 @@
+name: olmo2_1b
+base_model: allenai/OLMo-2-0425-1B
+tokenizer_name_or_path: allenai/OLMo-2-0425-1B
+
+human_checkpoint: runs/human_checkpoints/olmo2_1b/checkpoint

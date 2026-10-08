@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fairness-collapse"
+version = "0.1.0"
+description = "Controlled recursive synthetic-data continued-pretraining experiments for fairness collapse."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  {name = "Fairness Collapse Authors"}
+]
+
+[tool.setuptools.packages.find]
+include = ["collapse*"]

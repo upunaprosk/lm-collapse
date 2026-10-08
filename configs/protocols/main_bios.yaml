@@ -1,0 +1,90 @@
+protocol_name: fairness_collapse_main_bios_v2
+
+claim:
+  primary: >
+    Under recursive seeded synthetic-data continued pretraining,
+    gender-occupation disparity can become significantly worse than a matched
+    human-only trajectory before general performance significantly degrades.
+  scope: >
+    Controlled Bias-in-Bios experiments across three decoder-only model
+    families. The result is framed as a recurring/model-dependent pattern,
+    not a universal monotonic law.
+
+models:
+  - key: qwen_05b
+    config: configs/models/qwen_05b.yaml
+    experiment: configs/experiments/qwen_bios_recursive.yaml
+
+  - key: smollm2_360m
+    config: configs/models/smollm2_360m.yaml
+    experiment: configs/experiments/smol_bios_recursive.yaml
+
+  - key: olmo2_1b
+    config: configs/models/olmo2_1b.yaml
+    experiment: configs/experiments/olmo_bios_recursive.yaml
+
+dataset:
+  key: bias_in_bios
+  config: configs/datasets/bias_in_bios.yaml
+
+main_regime:
+  branch: recursive
+  generation: seeded_continuation
+  iterations: 4
+  synthetic_document_fraction: 1.0
+
+  target_generated_token_fraction: 0.50
+
+generation:
+  temperature: 0.9
+  top_p: 0.9
+  repetition_penalty: 1.1
+  length_matching_to_human_suffix: false
+
+training:
+  backend: llamafactory
+  finetuning_type: full
+  corpus_equivalents_per_iteration: 1.0
+  matched_human_only_trajectory: true
+  fixed_model_native_hce_budget: true
+
+  learning_rate: 5.0e-5
+  scheduler: cosine
+  warmup_ratio: 0.1
+  weight_decay: 0.1
+
+evaluation:
+  primary_fairness:
+    task: bias_in_bios_full_28way
+    score: mean_logprob
+    metric: rms_equal_opportunity_gap
+
+  supporting_fairness:
+    - stable_cell_rms_equal_opportunity_gap
+    - old_fixed_pairing_from_same_28way_scores
+
+  performance:
+    - fixed_heldout_human_perplexity
+    - mmlu
+
+statistics:
+  confidence_level: 0.99
+
+  fairness_onset: >
+    First iteration t where the paired stratified bootstrap 99% CI for
+    EO(R_t)-EO(H_t) lies entirely above zero.
+
+  performance_onset: >
+    First iteration t where the paired MMLU bootstrap 99% CI for
+    Acc(R_t)-Acc(H_t) lies entirely below zero.
+
+replication:
+  pipeline_seeds_file: configs/reproducibility/seeds.yaml
+
+not_main_grid:
+  - few_shot_generation
+  - iterative_reset_training
+  - temperature_sweep
+  - contamination_fraction_sweep
+  - crows_pairs
+  - sofa

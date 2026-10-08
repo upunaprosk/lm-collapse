@@ -1,0 +1,35 @@
+output_dir: data/processed/bias_in_bios
+
+dataset:
+  kind: bias_in_bios
+  dataset_name: iproskurina/bias_in_bios_real_data
+  dataset_config_name: null
+  revision: null
+
+  text_column: hard_text
+  profession_column: profession
+  gender_column: gender
+  id_column: null
+
+  splits:
+    train: train
+    validation: validation
+    test: test
+
+  preserve_columns: []
+
+  profession_index_base: 0
+
+  gender_map: null
+
+seed_policy:
+  reference_tokenizer: Qwen/Qwen2.5-0.5B
+
+  target_generated_fraction: 0.50
+
+  min_seed_tokens: 5
+  max_seed_tokens: 60
+  candidate_step: 1
+  min_suffix_tokens: 5
+
+  aggregation: example_mean

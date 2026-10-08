@@ -1,0 +1,5 @@
+name: qwen_05b
+base_model: Qwen/Qwen2.5-0.5B
+tokenizer_name_or_path: Qwen/Qwen2.5-0.5B
+
+human_checkpoint: runs/human_checkpoints/qwen_05b/checkpoint

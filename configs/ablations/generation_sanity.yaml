@@ -1,0 +1,39 @@
+name: generation_sanity_v1
+
+models:
+  - Qwen/Qwen2.5-0.5B
+  - HuggingFaceTB/SmolLM2-360M
+  - allenai/OLMo-2-0425-1B
+
+dataset:
+  prepared_train: data/processed/bias_in_bios/train.jsonl
+  num_examples_per_model: 500
+
+temperatures:
+  - 0.7
+  - 0.9
+  - 1.1
+
+fixed_generation:
+  top_p: 0.9
+  repetition_penalty: 1.1
+  max_new_tokens: 256
+  seed: 777
+
+allowed_selection_diagnostics:
+  - nonempty_generation_rate
+  - premature_eos_rate
+  - cap_hit_rate
+  - repetition_rate
+  - generated_length_distribution
+  - malformed_output_rate
+
+forbidden_selection_diagnostics:
+  - eo_gap
+  - gender_pronoun_rate
+  - stereotype_lexicon_rate
+  - occupation_gender_association
+  - any downstream fairness score
+
+decision_rule: >
+  Use temperature 0.9 for all model families if it is technically usable.

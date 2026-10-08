@@ -1,0 +1,12 @@
+pipeline_seeds:
+  - 42
+  - 43
+  - 44
+
+statistics:
+  bias_bootstrap_seed: 12345
+  mmlu_bootstrap_seed: 23456
+  synthetic_text_bootstrap_seed: 34567
+
+generation_sanity:
+  seed: 777

@@ -1,0 +1,5 @@
+name: smollm2_360m
+base_model: HuggingFaceTB/SmolLM2-360M
+tokenizer_name_or_path: HuggingFaceTB/SmolLM2-360M
+
+human_checkpoint: runs/human_checkpoints/smollm2_360m/checkpoint
