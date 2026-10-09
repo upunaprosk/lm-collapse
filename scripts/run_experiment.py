@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 
+from collapse.contamination.build_dataset import BuildDatasetConfig
 from collapse.contamination.generate import GenerationConfig
 from collapse.experiment import (
     RecursiveExperimentConfig,
@@ -16,7 +17,6 @@ from collapse.training.llamafactory import LlamaFactoryConfig
 
 
 DEFAULT_CONFIG = "configs/experiments/qwen_bios_recursive.yaml"
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -341,6 +341,30 @@ def build_generation_config(
                 32,
             )
         ),
+        generation_prompt=str(
+            generation.get(
+                "generation_prompt",
+                "",
+            )
+        ),
+        match_human_suffix_length=bool(
+            generation.get(
+                "match_human_suffix_length",
+                False,
+            )
+        ),
+        length_tolerance=float(
+            generation.get(
+                "length_tolerance",
+                0.25,
+            )
+        ),
+        buffer_tokens=int(
+            generation.get(
+                "buffer_tokens",
+                15,
+            )
+        ),
         generation_seed=(
             generation_seed
         ),
@@ -379,6 +403,47 @@ def build_generation_config(
             )
         ),
     )
+
+
+def build_dataset_mix_config(
+    raw: dict[str, Any],
+    *,
+    base_seed: int,
+) -> BuildDatasetConfig:
+    contamination = get_section(
+        raw,
+        "contamination",
+    )
+
+    fraction = float(
+        contamination.get(
+            "synthetic_document_fraction",
+            1.0,
+        )
+    )
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(
+            "contamination.synthetic_document_fraction must be in [0, 1]."
+        )
+
+    stratify = contamination.get(
+        "stratify_by",
+        "profession_id",
+    )
+    if stratify is not None:
+        stratify = str(stratify)
+
+    return BuildDatasetConfig(
+        synthetic_fraction=fraction,
+        seed=int(
+            contamination.get(
+                "sampling_seed",
+                base_seed + 40_000,
+            )
+        ),
+        stratify_by_metadata_key=stratify,
+    )
+
 
 
 def build_budget_config(
@@ -634,6 +699,12 @@ def build_experiment_config(
                 base_seed=seed,
             )
         ),
+        dataset_mix=(
+            build_dataset_mix_config(
+                raw,
+                base_seed=seed,
+            )
+        ),
         budget=(
             build_budget_config(
                 raw
@@ -705,6 +776,25 @@ def print_resolved_config(
     print(
         f"  batch_size         "
         f"{config.generation.batch_size}"
+    )
+    print(
+        f"  suffix length match "
+        f"{config.generation.match_human_suffix_length}"
+    )
+    print(
+        f"  length tolerance    "
+        f"{config.generation.length_tolerance}"
+    )
+
+    print()
+    print("Contamination:")
+    print(
+        f"  synthetic docs      "
+        f"{config.dataset_mix.synthetic_fraction:.2%}"
+    )
+    print(
+        f"  stratify by         "
+        f"{config.dataset_mix.stratify_by_metadata_key}"
     )
 
     print()

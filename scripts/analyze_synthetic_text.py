@@ -459,7 +459,6 @@ def print_top_changes(
     *,
     n: int = 15,
 ) -> None:
-
     rows = [
         stat
         for stat in result.profession_gender_stats

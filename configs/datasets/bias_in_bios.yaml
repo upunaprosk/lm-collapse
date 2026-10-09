@@ -27,8 +27,8 @@ seed_policy:
 
   target_generated_fraction: 0.50
 
-  min_seed_tokens: 5
-  max_seed_tokens: 60
+  min_seed_tokens: 30
+  max_seed_tokens: 30
   candidate_step: 1
   min_suffix_tokens: 5
 

@@ -11,26 +11,11 @@ import numpy as np
 
 @dataclass(frozen=True)
 class BootstrapConfig:
-    """
-    Paired stratified bootstrap for Bias-in-Bios checkpoint comparisons.
-    Intended comparison:
-        recursive R_t  vs. matched human-only H_t
-    Stratification:
-        gold profession x gender
-    Pairing:
-        the same sampled example IDs are used for H_t and R_t inside
-        every bootstrap replicate.
-    fairness collapse at iteration t if the 99% CI for
-        EO(R_t) - EO(H_t)
-    lies entirely above zero.
-    """
 
     n_bootstrap: int = 10_000
     confidence_level: float = 0.99
     seed: int = 12345
-
     correctness_field: str = "correct_mean"
-
     stable_group_min_count: int = 20
 
     bootstrap_chunk_size: int = 250
@@ -79,6 +64,9 @@ class PairedBootstrapResult:
     stable_group_min_count: int
     num_stable_professions: int
 
+    # Profession-level point estimates only. Bootstrap CIs for individual
+    # professions are intentionally omitted from the main object to avoid
+    # encouraging 28 uncorrected significance claims.
     profession_gaps_human: dict[str, float]
     profession_gaps_comparison: dict[str, float]
     profession_gap_differences: dict[str, float]
@@ -720,10 +708,6 @@ def paired_stratified_bootstrap(
     PairedBootstrapResult,
     dict[str, np.ndarray],
 ]:
-    """
-    Compare a checkpoint against a matched human-only checkpoint, i.e.:
-        H_2 predictions vs. R_2 predictions.
-    """
 
     if config is None:
         config = (

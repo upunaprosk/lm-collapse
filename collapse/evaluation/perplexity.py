@@ -18,12 +18,8 @@ from transformers import (
 
 from collapse.records import Example
 
-
 @dataclass(frozen=True)
 class PerplexityConfig:
-    """
-    Held-out human perplexity evaluation.
-    """
 
     batch_size: int = 8
 
@@ -36,6 +32,7 @@ class PerplexityConfig:
     torch_dtype: str = "auto"
     device_map: str | None = "auto"
 
+    # Optional cap for debugging only.
     max_examples: int | None = None
 
 
@@ -185,6 +182,7 @@ def infer_max_length(
         )
 
     if not candidates:
+        # Conservative fallback; Bias-in-Bios documents are much shorter.
         return 2048
 
     return min(candidates)
@@ -259,9 +257,6 @@ def document_windows(
     max_length: int,
     stride: int,
 ) -> list[Window]:
-    """
-    Sliding-window causal-LM evaluation.
-    """
     if len(token_ids) < 2:
         return []
 
@@ -410,7 +405,6 @@ def collate_windows(
         score_mask,
     )
 
-
 @torch.inference_mode()
 def evaluate_fixed_human_perplexity(
     *,
@@ -423,9 +417,6 @@ def evaluate_fixed_human_perplexity(
     PerplexityResult,
     list[ExamplePerplexity],
 ]:
-    """
-    Evaluate a model on a fixed human-written corpus.
-    """
 
     if not examples:
         raise ValueError(
@@ -551,6 +542,8 @@ def evaluate_fixed_human_perplexity(
 
         logits = outputs.logits
 
+        # Causal shift:
+        # logits at position j predict token j+1.
         shift_logits = logits[
             :,
             :-1,

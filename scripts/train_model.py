@@ -466,7 +466,6 @@ def save_launcher_manifest(
             ensure_ascii=False,
         )
 
-
 def main() -> None:
     args = parse_args()
 
@@ -574,7 +573,7 @@ def main() -> None:
         path=args.run_dir / "launcher_manifest.json",
         config_path=args.config,
         input_path=args.input,
-        init_model=args.init_model,
+        model_name_or_path=args.init_model,
         run_name=args.run_name,
         training_seed=training_seed,
         budget_path=args.budget,
@@ -587,7 +586,7 @@ def main() -> None:
 
     run = train_with_llamafactory(
         examples=training_examples,
-        init_model=args.init_model,
+        model_name_or_path=args.init_model,
         run_dir=args.run_dir,
         run_name=args.run_name,
         budget=budget,

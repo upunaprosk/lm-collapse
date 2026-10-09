@@ -6,12 +6,19 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
+from collapse.contamination.build_dataset import (
+    BuildDatasetConfig,
+    build_training_dataset,
+)
 from collapse.contamination.generate import (
     GenerationConfig,
     generate_seeded_dataset,
     save_generation_result,
 )
-from collapse.data.base import load_examples_jsonl
+from collapse.data.base import (
+    load_examples_jsonl,
+    save_examples_jsonl,
+)
 from collapse.records import Example
 from collapse.training.budget import (
     TrainingBudget,
@@ -31,7 +38,6 @@ class RecursiveExperimentConfig:
 
     experiment_name: str
     human_checkpoint: str
-
     prepared_train_path: str
     training_tokenizer: str
 
@@ -41,7 +47,9 @@ class RecursiveExperimentConfig:
     generation: GenerationConfig = field(
         default_factory=GenerationConfig
     )
-
+    dataset_mix: BuildDatasetConfig = field(
+        default_factory=BuildDatasetConfig
+    )
     budget: TrainingBudgetConfig = field(
         default_factory=TrainingBudgetConfig
     )
@@ -136,7 +144,6 @@ def validate_config(
 def validate_human_examples(
     examples: Sequence[Example],
 ) -> None:
-
     if not examples:
         raise ValueError(
             "Prepared human training corpus is empty."
@@ -224,6 +231,9 @@ def save_experiment_manifest(
         "generation": asdict(
             config.generation
         ),
+        "dataset_mix": asdict(
+            config.dataset_mix
+        ),
         "budget": asdict(
             budget
         ),
@@ -238,8 +248,9 @@ def save_experiment_manifest(
                 "H_t = Train(H_{t-1}, D_human)"
             ),
             "recursive_branch": (
-                "D_syn,t = Generate(R_{t-1}, frozen human prefixes); "
-                "R_t = Train(R_{t-1}, D_syn,t)"
+                "D_gen,t = Generate(R_{t-1}, frozen human prefixes); "
+                "D_mix,t = Mix(D_human, D_gen,t, fixed synthetic fraction); "
+                "R_t = Train(R_{t-1}, D_mix,t)"
             ),
             "prefix_policy": (
                 "Fixed once from human training data; identical raw "
@@ -377,7 +388,7 @@ def run_human_trajectory(
         train_run = (
             backend.train(
                 examples=human_examples,
-                init_model=(
+                model_name_or_path=(
                     previous_checkpoint
                 ),
                 run_dir=iteration_dir,
@@ -429,13 +440,11 @@ def run_human_trajectory(
 
     return records
 
-
 def generation_config_for_iteration(
     base: GenerationConfig,
     *,
     generation_seed: int,
 ) -> GenerationConfig:
-
     return GenerationConfig(
         temperature=base.temperature,
         top_p=base.top_p,
@@ -449,6 +458,12 @@ def generation_config_for_iteration(
             base.min_new_tokens
         ),
         batch_size=base.batch_size,
+        generation_prompt=base.generation_prompt,
+        match_human_suffix_length=(
+            base.match_human_suffix_length
+        ),
+        length_tolerance=base.length_tolerance,
+        buffer_tokens=base.buffer_tokens,
         generation_seed=(
             generation_seed
         ),
@@ -540,7 +555,6 @@ def run_recursive_trajectory(
                 ),
             )
         )
-
         generation_result = (
             generate_seeded_dataset(
                 examples=human_examples,
@@ -556,6 +570,45 @@ def run_recursive_trajectory(
             generation_result,
             generation_dir,
         )
+        mix_config = BuildDatasetConfig(
+            synthetic_fraction=config.dataset_mix.synthetic_fraction,
+            seed=config.dataset_mix.seed + iteration,
+            stratify_by_metadata_key=(
+                config.dataset_mix.stratify_by_metadata_key
+            ),
+        )
+
+        training_examples = build_training_dataset(
+            human_examples=human_examples,
+            generated_examples=generation_result.examples,
+            config=mix_config,
+        )
+
+        training_data_path = (
+            generation_dir / "training_mix.jsonl"
+        )
+        save_examples_jsonl(
+            training_examples,
+            training_data_path,
+        )
+
+        num_synthetic_training = sum(
+            example.source == "synthetic"
+            for example in training_examples
+        )
+        write_json(
+            {
+                "config": asdict(mix_config),
+                "num_examples": len(training_examples),
+                "num_synthetic_examples": num_synthetic_training,
+                "realized_synthetic_document_fraction": (
+                    num_synthetic_training / len(training_examples)
+                    if training_examples
+                    else 0.0
+                ),
+            },
+            generation_dir / "training_mix_manifest.json",
+        )
 
         train_dir = (
             iteration_dir / "train"
@@ -570,10 +623,8 @@ def run_recursive_trajectory(
 
         train_run = (
             backend.train(
-                examples=(
-                    generation_result.examples
-                ),
-                init_model=(
+                examples=training_examples,
+                model_name_or_path=(
                     previous_checkpoint
                 ),
                 run_dir=train_dir,
@@ -595,10 +646,7 @@ def run_recursive_trajectory(
             ),
 
             training_data=str(
-                (
-                    generation_dir
-                    / "generated.jsonl"
-                ).resolve()
+                training_data_path.resolve()
             ),
 
             generation_dir=str(
@@ -687,7 +735,6 @@ def run_recursive_experiment(
         },
         run_root / "input_manifest.json",
     )
-
     budget, budget_path = (
         fit_and_save_budget(
             human_examples=human_examples,

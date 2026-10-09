@@ -37,7 +37,8 @@ def chunk_text_by_reference_tokens(
     config: ChunkingConfig,
 ) -> list[str]:
     """
-    Split one document into raw-text chunks.
+    Split one raw document into contiguous raw-text chunks using token
+    offsets from ONE canonical reference tokenizer.
     """
     validate_chunking_config(config)
 

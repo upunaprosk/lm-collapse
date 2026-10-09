@@ -8,7 +8,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-
 @dataclass(frozen=True)
 class CheckpointRow:
     experiment: str
@@ -36,10 +35,6 @@ class CheckpointRow:
 
 @dataclass
 class MatchedRow:
-    """
-    Recursive - matched human-only checkpoint for one seed/iteration.
-    """
-
     experiment: str
     model_key: str | None
 
@@ -89,7 +84,6 @@ class MatchedRow:
     stable_eo_significant_increase: bool | None = None
 
     bootstrap_path: str | None = None
-
     mmlu_paired_delta: float | None = None
     mmlu_paired_ci_low: float | None = None
     mmlu_paired_ci_high: float | None = None
@@ -98,7 +92,6 @@ class MatchedRow:
     mmlu_significant_degradation: bool | None = None
 
     mmlu_stats_path: str | None = None
-
     significance_state: str | None = None
     trajectory_stage: str | None = None
     fairness_onset_iteration: int | None = None
@@ -178,6 +171,7 @@ def write_csv(
         )
         writer.writeheader()
         writer.writerows(rows)
+
 
 def _parse_seed_component(
     component: str,
@@ -316,7 +310,6 @@ def read_experiment_metadata(
         else None,
     )
 
-
 def _nested(
     value: dict[str, Any],
     *keys: str,
@@ -377,7 +370,6 @@ def _difference(
     return float(
         comparison - human
     )
-
 
 def discover_evaluation_summaries(
     run_root: str | Path,
@@ -965,9 +957,6 @@ def significance_state(
     fairness: bool | None,
     performance: bool | None,
 ) -> str:
-    """
-    State at THIS iteration only.
-    """
 
     if fairness is True and performance is True:
         return (
@@ -989,15 +978,6 @@ def significance_state(
 def assign_stage_labels(
     rows: Sequence[MatchedRow],
 ) -> None:
-    """
-    Add step-level onset tags within each experiment x seed.
-    -----------
-    fairness onset:
-        first t where EO(R_t) - EO(H_t) has a 99% CI above zero.
-    performance onset:
-        first t where MMLU(R_t) - MMU(H_t) has a 99% CI entirely below zero.
-
-    """
 
     grouped: dict[
         tuple[str, int],
@@ -1464,7 +1444,6 @@ def summarize_matched_rows(
 def onset_summary(
     rows: Sequence[MatchedRow],
 ) -> list[dict[str, Any]]:
-
     grouped = {}
 
     for row in rows:
@@ -1556,9 +1535,6 @@ def aggregate_results(
     run_root: str | Path,
     output_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """
-    Aggregate all evaluations and paired statistics
-    """
 
     run_root = Path(run_root)
 

@@ -42,7 +42,6 @@ from collapse.training.llamafactory import (
 
 DEFAULT_CONFIG = "configs/experiments/qwen_bios_recursive.yaml"
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -855,7 +854,7 @@ def main() -> None:
 
     dry_run = train_with_llamafactory(
         examples=human_subset,
-        init_model=model_name,
+        model_name_or_path=model_name,
         run_dir=dry_run_dir,
         run_name="smoke_train_dry_run",
         budget=budget,
@@ -1080,7 +1079,7 @@ def main() -> None:
             examples=(
                 generation_1.examples
             ),
-            init_model=(
+            model_name_or_path=(
                 model_name
             ),
             run_dir=train_dir,

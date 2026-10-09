@@ -153,6 +153,7 @@ def main() -> None:
                 f"{path.relative_to(root)}: unresolved placeholder "
                 f"{placeholder}"
             )
+
         if (
             "configs/experiments"
             in str(

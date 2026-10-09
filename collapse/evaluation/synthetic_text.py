@@ -11,7 +11,6 @@ import numpy as np
 
 from collapse.records import Example
 
-
 DEFAULT_LEXICONS: dict[str, list[str]] = {
     "status_achievement": [
         "accomplished",
@@ -107,19 +106,6 @@ PRONOUN_LEXICONS: dict[str, set[str]] = {
 
 @dataclass(frozen=True)
 class SyntheticTextConfig:
-    """
-    Direct analysis of generated Bias-in-Bios biographies.
-
-    Statistical tests
-    -----------------
-    For each feature x profession x gender:
-        - paired human/synthetic mean difference
-        - paired bootstrap CI
-        - paired Wilcoxon signed-rank p-value (when scipy is installed)
-        - Benjamini-Hochberg q-values across profession cells
-
-    """
-
     bootstrap_replicates: int = 5_000
     confidence_level: float = 0.95
     bootstrap_seed: int = 34567
@@ -131,7 +117,6 @@ class SyntheticTextConfig:
 
     analyze_full_text: bool = True
     analyze_suffix: bool = True
-
     save_per_example: bool = True
 
 
@@ -966,9 +951,6 @@ def _wilcoxon_pvalue(
     human: np.ndarray,
     synthetic: np.ndarray,
 ) -> float | None:
-    """
-    Paired Wilcoxon signed-rank test.
-    """
     differences = (
         synthetic
         - human
@@ -1009,9 +991,6 @@ def benjamini_hochberg(
 ) -> list[
     float | None
 ]:
-    """
-    Benjamini-Hochberg FDR correction.
-    """
     indexed = [
         (
             index,

@@ -66,7 +66,7 @@ PROFESSION_NAME_TO_ID = {
 
 PAIRWISE_ALTERNATIVES = {
     0: 2,
-    1: 10,
+    1: 11,
     2: 15,
     3: 19,
     4: 23,
@@ -91,16 +91,13 @@ PAIRWISE_ALTERNATIVES = {
     23: 8,
     24: 1,
     25: 6,
-    26: 21,
+    26: 17,
     27: 17,
 }
 
 
 @dataclass(frozen=True)
 class BiasInBiosEvalConfig:
-    """
-    28-class likelihood classification.
-    """
 
     example_batch_size: int = 8
     candidate_chunk_size: int = 4
@@ -112,16 +109,12 @@ class BiasInBiosEvalConfig:
     )
     label_prefix: str = " "
     primary_score: str = "mean_logprob"
-
     save_all_scores: bool = True
-
     stable_group_min_count: int = 20
-
     gender_map: dict[str, str] | None = None
 
     torch_dtype: str = "auto"
     device_map: str | None = "auto"
-
     max_prompt_tokens: int | None = None
 
     max_examples: int | None = None
@@ -145,6 +138,7 @@ class Prediction:
     correct_total: bool
     margin_total: float
 
+    # Optional 28-element arrays in canonical profession order.
     mean_logprob_scores: list[float] | None = None
     total_logprob_scores: list[float] | None = None
 
@@ -296,7 +290,7 @@ def normalize_gender(
             return value
 
     raise ValueError(
-        f"Cannot normalize gender value {raw_value!r}. "
+        f"Cannot safely normalize gender value {raw_value!r}. "
         "If the dataset uses numeric labels, provide an explicit "
         "BiasInBiosEvalConfig.gender_map."
     )
@@ -450,7 +444,6 @@ def encode_examples(
                 ),
             )
         )
-
     encoded.sort(
         key=lambda item: len(
             item.prompt_ids
@@ -685,9 +678,6 @@ def score_pair_sequences(
     np.ndarray,
     np.ndarray,
 ]:
-    """
-    Score complete profession strings.
-    """
 
     device = get_model_device(
         model
@@ -799,11 +789,6 @@ def score_batch_all_professions(
     np.ndarray,
     np.ndarray,
 ]:
-    """
-    Returns arrays of shape:
-
-        [num_examples_in_batch, 28]
-    """
 
     n_examples = len(
         batch
@@ -914,17 +899,6 @@ def compute_eo_metrics(
     correctness: Sequence[bool],
     stable_group_min_count: int,
 ) -> dict[str, Any]:
-    """
-    Equal opportunity for multiclass occupation prediction.
-    For each profession p:
-
-        TPR_male(p)   = P(pred=p | gold=p, male)
-        TPR_female(p) = P(pred=p | gold=p, female)
-        gap(p) = TPR_male(p) - TPR_female(p)
-
-    Aggregate EO GAP is the RMS across professions where both groups are
-    represented.
-    """
 
     by_profession: dict[
         int,
@@ -1337,11 +1311,6 @@ def evaluate_bias_in_bios_28way(
     EvaluationResult,
     list[Prediction],
 ]:
-    """
-    Exact 28-way occupation likelihood classification.
-
-    Each biography is scored against all 28 profession strings.
-    """
 
     selected_examples = list(
         examples

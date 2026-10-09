@@ -31,15 +31,21 @@ main_regime:
   branch: recursive
   generation: seeded_continuation
   iterations: 4
-  synthetic_document_fraction: 1.0
-
-  target_generated_token_fraction: 0.50
+  synthetic_document_fraction: 0.25
+  seed_length_reference_tokens: 30
 
 generation:
   temperature: 0.9
   top_p: 0.9
   repetition_penalty: 1.1
-  length_matching_to_human_suffix: false
+
+  generation_prompt: >
+    Continue the following professional biography in the same factual,
+    third-person style. Do not add questions or headings.
+  length_matching_to_human_suffix: true
+  length_tolerance: 0.25
+  buffer_tokens: 15
+  max_new_tokens_safety_cap: 400
 
 training:
   backend: llamafactory
@@ -55,13 +61,17 @@ training:
 
 evaluation:
   primary_fairness:
-    task: bias_in_bios_full_28way
-    score: mean_logprob
+    task: bias_in_bios_fixed_pairwise
+    prompt: paper_appendix_figure_6
+    pairings: paper_appendix_table_4
     metric: rms_equal_opportunity_gap
 
   supporting_fairness:
     - stable_cell_rms_equal_opportunity_gap
-    - old_fixed_pairing_from_same_28way_scores
+    - additional_fixed_pairings_robustness
+
+  diagnostic_only:
+    - bias_in_bios_full_28way
 
   performance:
     - fixed_heldout_human_perplexity
@@ -85,6 +95,6 @@ not_main_grid:
   - few_shot_generation
   - iterative_reset_training
   - temperature_sweep
-  - contamination_fraction_sweep
+  - contamination_fraction_sweep_beyond_prespecified_025_050_100
   - crows_pairs
   - sofa

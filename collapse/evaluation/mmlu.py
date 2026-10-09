@@ -11,9 +11,6 @@ from typing import Any
 
 @dataclass(frozen=True)
 class MMLUConfig:
-    """
-    MMLU evaluation through EleutherAI's lm-evaluation-harness.
-    """
 
     executable: str = "lm-eval"
 
@@ -24,7 +21,6 @@ class MMLUConfig:
     device: str = "cuda:0"
 
     dtype: str = "bfloat16"
-
     seed: str = "0,1234,1234,1234"
 
     log_samples: bool = True
@@ -89,10 +85,6 @@ def encode_model_args(
     model_name_or_path: str,
     config: MMLUConfig,
 ) -> str:
-    """
-    Build lm-eval Hugging Face model_args.
-    """
-
     args: dict[str, Any] = {
         "pretrained": (
             model_name_or_path
@@ -468,7 +460,6 @@ def save_summary(
 
     return path
 
-
 def evaluate_mmlu(
     *,
     model_name_or_path: str,
@@ -476,9 +467,6 @@ def evaluate_mmlu(
     config: MMLUConfig | None = None,
     dry_run: bool = False,
 ) -> MMLUSummary | None:
-    """
-    Run MMLU through lm-evaluation-harness.
-    """
 
     if config is None:
         config = (

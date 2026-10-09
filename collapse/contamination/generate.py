@@ -20,32 +20,26 @@ from transformers import (
 
 from collapse.records import Example
 
-
 @dataclass(frozen=True)
 class GenerationConfig:
-    """
-    Configuration for seeded continuation.
-    Generation is allowed to terminate naturally (eos).
-    """
-
     temperature: float = 0.9
     top_p: float = 0.9
     repetition_penalty: float = 1.1
 
-    max_new_tokens: int = 256
+    max_new_tokens: int = 400
     min_new_tokens: int = 1
 
     batch_size: int = 32
+    generation_prompt: str = ""
 
+    match_human_suffix_length: bool = False
+    length_tolerance: float = 0.25
+    buffer_tokens: int = 15
     generation_seed: int = 42
-
     torch_dtype: str = "auto"
     device_map: str | None = "auto"
-
     add_special_tokens: bool = False
-
     max_prompt_tokens: int | None = None
-
     keep_ineligible_human: bool = True
 
 
@@ -67,8 +61,15 @@ class GenerationStats:
     min_generated_tokens: int | None
     max_generated_tokens: int | None
 
+    mean_target_suffix_tokens: float | None
+    median_target_suffix_tokens: float | None
+    mean_generated_to_target_ratio: float | None
+
     empty_generation_rate: float
+    length_window_failure_rate: float
     eos_terminated_rate: float
+    sentence_boundary_rate: float
+    max_length_stop_rate: float
 
 
 @dataclass
@@ -76,10 +77,9 @@ class GenerationResult:
     examples: list[Example]
     stats: GenerationStats
 
+
 def seed_generation(seed: int) -> None:
-    """
-    Seed the stochastic generation pipeline.
-    """
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -140,7 +140,7 @@ def load_generation_model(
     config: GenerationConfig,
 ) -> PreTrainedModel:
     kwargs: dict[str, Any] = {
-        "torch_dtype": resolve_torch_dtype(
+        "dtype": resolve_torch_dtype(
             config.torch_dtype
         ),
     }
@@ -156,7 +156,6 @@ def load_generation_model(
     model.eval()
 
     return model
-
 
 def batched(
     items: Sequence[Example],
@@ -242,7 +241,6 @@ def _prompt_token_lengths(
         for ids in encoded["input_ids"]
     ]
 
-
 @torch.inference_mode()
 def generate_batch(
     examples: Sequence[Example],
@@ -250,36 +248,100 @@ def generate_batch(
     tokenizer: PreTrainedTokenizerBase,
     config: GenerationConfig,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    """
-    Generate one continuation for each prefix.
+    """Generate one continuation for each canonical prefix.
     """
 
     if not examples:
         return [], []
 
-    prompts = [
+    canonical_prefixes = [
         example.prefix_text
         for example in examples
     ]
+    human_suffixes = [
+        example.human_suffix
+        for example in examples
+    ]
 
-    if any(prompt is None for prompt in prompts):
+    if any(prefix is None for prefix in canonical_prefixes):
         raise ValueError(
             "generate_batch received an example with prefix_text=None."
         )
 
-    prompts = [
-        str(prompt)
-        for prompt in prompts
+    if (
+        config.match_human_suffix_length
+        and any(suffix is None for suffix in human_suffixes)
+    ):
+        raise ValueError(
+            "Length-controlled generation requires human_suffix on every "
+            "eligible prepared example."
+        )
+
+    canonical_prefixes = [str(x) for x in canonical_prefixes]
+    human_suffixes = [str(x or "") for x in human_suffixes]
+
+    model_prompts = [
+        config.generation_prompt + prefix
+        for prefix in canonical_prefixes
     ]
+
+    native_seed_lengths = _prompt_token_lengths(
+        canonical_prefixes,
+        tokenizer,
+        add_special_tokens=False,
+    )
+    native_prompt_lengths = _prompt_token_lengths(
+        model_prompts,
+        tokenizer,
+        add_special_tokens=config.add_special_tokens,
+    )
+
+    suffix_encoded = tokenizer(
+        human_suffixes,
+        add_special_tokens=False,
+        padding=False,
+        truncation=False,
+    )["input_ids"]
+    target_suffix_lengths = [len(ids) for ids in suffix_encoded]
+
+    if config.match_human_suffix_length:
+        if not (0.0 <= config.length_tolerance < 1.0):
+            raise ValueError("length_tolerance must be in [0, 1).")
+        if config.buffer_tokens < 0:
+            raise ValueError("buffer_tokens must be >= 0.")
+
+        min_lengths = [
+            max(
+                config.min_new_tokens,
+                int(target * (1.0 - config.length_tolerance)),
+            )
+            for target in target_suffix_lengths
+        ]
+        max_lengths = [
+            min(
+                config.max_new_tokens,
+                max(
+                    min_len,
+                    int(target * (1.0 + config.length_tolerance)),
+                ),
+            )
+            for target, min_len in zip(target_suffix_lengths, min_lengths)
+        ]
+        batch_max_new_tokens = min(
+            config.max_new_tokens,
+            max(max_lengths) + config.buffer_tokens,
+        )
+    else:
+        min_lengths = [config.min_new_tokens] * len(examples)
+        max_lengths = [config.max_new_tokens] * len(examples)
+        batch_max_new_tokens = config.max_new_tokens
 
     device = get_model_device(model)
 
     tokenizer_kwargs: dict[str, Any] = {
         "return_tensors": "pt",
         "padding": True,
-        "add_special_tokens": (
-            config.add_special_tokens
-        ),
+        "add_special_tokens": config.add_special_tokens,
     }
 
     if config.max_prompt_tokens is not None:
@@ -293,35 +355,27 @@ def generate_batch(
         tokenizer_kwargs["truncation"] = False
 
     inputs = tokenizer(
-        prompts,
+        model_prompts,
         **tokenizer_kwargs,
     )
-
     inputs = {
         key: value.to(device)
         for key, value in inputs.items()
     }
 
-    input_width = inputs[
-        "input_ids"
-    ].shape[1]   # With left  padding, generated tokens begin after the full padded input width
+    input_width = inputs["input_ids"].shape[1]
 
     generation_kwargs: dict[str, Any] = {
-        "max_new_tokens": config.max_new_tokens,
+        "max_new_tokens": batch_max_new_tokens,
         "min_new_tokens": config.min_new_tokens,
         "do_sample": True,
         "temperature": config.temperature,
         "top_p": config.top_p,
-        "repetition_penalty": (
-            config.repetition_penalty
-        ),
+        "repetition_penalty": config.repetition_penalty,
         "pad_token_id": tokenizer.pad_token_id,
     }
-
     if tokenizer.eos_token_id is not None:
-        generation_kwargs[
-            "eos_token_id"
-        ] = tokenizer.eos_token_id
+        generation_kwargs["eos_token_id"] = tokenizer.eos_token_id
 
     outputs = model.generate(
         **inputs,
@@ -331,66 +385,107 @@ def generate_batch(
     continuations: list[str] = []
     metadata: list[dict[str, Any]] = []
 
-    prompt_lengths = _prompt_token_lengths(
-        prompts,
-        tokenizer,
-        add_special_tokens=config.add_special_tokens,
-    )
-
-    for output_ids, prompt_len in zip(
+    for (
+        output_ids,
+        seed_len,
+        prompt_len,
+        target_len,
+        min_len,
+        max_len,
+    ) in zip(
         outputs,
-        prompt_lengths,
+        native_seed_lengths,
+        native_prompt_lengths,
+        target_suffix_lengths,
+        min_lengths,
+        max_lengths,
     ):
-        generated_ids = output_ids[
-            input_width:
-        ].tolist()
+        raw_ids = output_ids[input_width:].tolist()
+        raw_generated_tokens = len(raw_ids)
 
-        eos_terminated = False
+        eos_id = tokenizer.eos_token_id
+        first_eos = None
+        if eos_id is not None and eos_id in raw_ids:
+            first_eos = raw_ids.index(eos_id)
 
-        if (
-            tokenizer.eos_token_id is not None
-            and tokenizer.eos_token_id
-            in generated_ids
-        ):
-            eos_pos = generated_ids.index(
-                tokenizer.eos_token_id
+        stop_reason = "natural_or_cap"
+        length_window_failure = False
+
+        if config.match_human_suffix_length:
+            effective_raw_len = (
+                first_eos
+                if first_eos is not None
+                else raw_generated_tokens
             )
 
-            generated_ids = generated_ids[
-                :eos_pos
-            ]
+            if effective_raw_len < min_len:
+                chosen_ids: list[int] = []
+                stop_reason = "too_short"
+                length_window_failure = True
+            else:
+                upper = min(max_len, effective_raw_len)
+                stop = None
+                if (
+                    first_eos is not None
+                    and min_len <= first_eos <= upper
+                ):
+                    stop = first_eos
+                    stop_reason = "eos"
+                if stop is None:
+                    for end_pos in range(min_len, upper + 1):
+                        candidate = tokenizer.decode(
+                            raw_ids[:end_pos],
+                            skip_special_tokens=True,
+                            clean_up_tokenization_spaces=False,
+                        )
+                        if candidate.rstrip().endswith((".", "!", "?")):
+                            stop = end_pos
+                            stop_reason = "sentence_boundary"
+                            break
 
-            eos_terminated = True
+                if stop is None:
+                    stop = upper
+                    stop_reason = "max_length"
+
+                chosen_ids = raw_ids[:stop]
+        else:
+            if first_eos is not None:
+                chosen_ids = raw_ids[:first_eos]
+                stop_reason = "eos"
+            else:
+                chosen_ids = raw_ids
+                if raw_generated_tokens >= config.max_new_tokens:
+                    stop_reason = "max_length"
 
         text = tokenizer.decode(
-            generated_ids,
+            chosen_ids,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
         )
-
         generation_empty = len(text.strip()) == 0
 
         continuations.append(text)
-
         metadata.append(
             {
-                "native_prefix_tokens": int(
-                    prompt_len
+                "native_prefix_tokens": int(seed_len),
+                "native_generation_prompt_tokens": int(prompt_len),
+                "native_target_suffix_tokens": int(target_len),
+                "min_target_tokens": int(min_len),
+                "max_target_tokens": int(max_len),
+                "raw_generated_tokens": int(raw_generated_tokens),
+                "generated_tokens": int(len(chosen_ids)),
+                "stop_reason": stop_reason,
+                "eos_terminated": stop_reason == "eos",
+                "sentence_boundary_terminated": (
+                    stop_reason == "sentence_boundary"
                 ),
-                "generated_tokens": int(
-                    len(generated_ids)
-                ),
-                "eos_terminated": (
-                    eos_terminated
-                ),
-                "generation_empty": (
-                    generation_empty
-                ),
+                "max_length_terminated": stop_reason == "max_length",
+                "length_window_failure": length_window_failure,
+                "generation_empty": generation_empty,
             }
         )
 
     return continuations, metadata
-
 
 def generate_seeded_dataset(
     *,
@@ -403,9 +498,6 @@ def generate_seeded_dataset(
 ) -> GenerationResult:
     """
     Generate synthetic suffixes for every eligible example.
-    final text =
-        frozen human prefix
-        + model-generated continuation
     """
 
     validate_generation_inputs(
@@ -434,6 +526,13 @@ def generate_seeded_dataset(
         examples
     )
 
+    if config.match_human_suffix_length:
+        eligible = sorted(
+            eligible,
+            key=lambda example: int(
+                example.metadata.get("human_suffix_tokens", 0)
+            ),
+        )
     generated_by_id: dict[
         str,
         tuple[str, dict[str, Any]]
@@ -478,11 +577,16 @@ def generate_seeded_dataset(
 
     generated_token_lengths: list[int] = []
     prefix_token_lengths: list[int] = []
+    target_suffix_token_lengths: list[int] = []
+    generated_to_target_ratios: list[float] = []
 
     num_generated = 0
     num_kept_human = 0
     num_failed = 0
+    num_length_window_failed = 0
     num_eos_terminated = 0
+    num_sentence_boundary_terminated = 0
+    num_max_length_terminated = 0
 
     for example in examples:
 
@@ -546,14 +650,28 @@ def generate_seeded_dataset(
             ]
         )
 
-        if gen_meta[
-            "eos_terminated"
-        ]:
-            num_eos_terminated += 1
+        target_len = int(
+            gen_meta.get("native_target_suffix_tokens", 0)
+        )
+        target_suffix_token_lengths.append(target_len)
+        if target_len > 0 and gen_meta["generated_tokens"] > 0:
+            generated_to_target_ratios.append(
+                gen_meta["generated_tokens"] / target_len
+            )
 
-        if gen_meta[
-            "generation_empty"
-        ]:
+        if gen_meta.get("length_window_failure", False):
+            num_length_window_failed += 1
+        if gen_meta["eos_terminated"]:
+            num_eos_terminated += 1
+        if gen_meta.get("sentence_boundary_terminated", False):
+            num_sentence_boundary_terminated += 1
+        if gen_meta.get("max_length_terminated", False):
+            num_max_length_terminated += 1
+
+        if (
+            gen_meta["generation_empty"]
+            or gen_meta.get("length_window_failure", False)
+        ):
             out = deepcopy(example)
 
             out.source = "human"
@@ -572,7 +690,7 @@ def generate_seeded_dataset(
                         config.generation_seed
                     ),
                     "generation_status": (
-                        "failed_empty_kept_human"
+                        "failed_generation_kept_human"
                     ),
                     **gen_meta,
                 }
@@ -625,6 +743,12 @@ def generate_seeded_dataset(
                 "max_new_tokens": (
                     config.max_new_tokens
                 ),
+                "generation_prompt": config.generation_prompt,
+                "match_human_suffix_length": (
+                    config.match_human_suffix_length
+                ),
+                "length_tolerance": config.length_tolerance,
+                "buffer_tokens": config.buffer_tokens,
                 **gen_meta,
             }
         )
@@ -702,8 +826,29 @@ def generate_seeded_dataset(
             else None
         ),
 
+        mean_target_suffix_tokens=(
+            float(np.mean(target_suffix_token_lengths))
+            if target_suffix_token_lengths
+            else None
+        ),
+        median_target_suffix_tokens=(
+            float(np.median(target_suffix_token_lengths))
+            if target_suffix_token_lengths
+            else None
+        ),
+        mean_generated_to_target_ratio=(
+            float(np.mean(generated_to_target_ratios))
+            if generated_to_target_ratios
+            else None
+        ),
+
         empty_generation_rate=(
             num_failed / num_eligible
+            if num_eligible
+            else 0.0
+        ),
+        length_window_failure_rate=(
+            num_length_window_failed / num_eligible
             if num_eligible
             else 0.0
         ),
@@ -714,9 +859,18 @@ def generate_seeded_dataset(
             if num_eligible
             else 0.0
         ),
+        sentence_boundary_rate=(
+            num_sentence_boundary_terminated / num_eligible
+            if num_eligible
+            else 0.0
+        ),
+        max_length_stop_rate=(
+            num_max_length_terminated / num_eligible
+            if num_eligible
+            else 0.0
+        ),
     )
 
-    # We do not force-delete externally supplied objects.
     if owns_model:
         del model
 
@@ -730,7 +884,6 @@ def generate_seeded_dataset(
         examples=result_examples,
         stats=stats,
     )
-
 
 def example_to_dict(
     example: Example,

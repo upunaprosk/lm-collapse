@@ -58,10 +58,6 @@ class TrainingBudget:
 
 @dataclass(frozen=True)
 class DatasetBudgetReport:
-    """
-    Compare a dataset to the human reference.
-    """
-
     num_examples: int
 
     content_tokens: int
@@ -75,18 +71,13 @@ class DatasetBudgetReport:
 
     available_vs_human_reference: float | None
 
-
 def load_training_tokenizer(
     tokenizer_name_or_path: str,
 ) -> PreTrainedTokenizerBase:
-    """
-    Load the tokenizer.
-    """
     return AutoTokenizer.from_pretrained(
         tokenizer_name_or_path,
         use_fast=True,
     )
-
 
 def count_example_tokens(
     example: Example,
@@ -382,7 +373,6 @@ def report_dataset_against_budget(
         ),
     )
 
-
 def llamafactory_budget_overrides(
     budget: TrainingBudget,
 ) -> dict[str, Any]:
@@ -402,7 +392,6 @@ def llamafactory_budget_overrides(
         ),
         "packing": True,
     }
-
 
 def save_training_budget(
     budget: TrainingBudget,

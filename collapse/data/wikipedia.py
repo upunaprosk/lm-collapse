@@ -23,7 +23,6 @@ class WikipediaConfig:
 
     text_column: str = "text"
     id_column: str | None = "id"
-
     splits: dict[str, str] = field(
         default_factory=lambda: {
             "train": "train",
@@ -39,7 +38,6 @@ class WikipediaConfig:
 
     min_document_chars: int = 200
     max_documents_per_split: int | None = None
-
     holdout_fraction: float = 0.01
     holdout_split_name: str = "validation"
     split_seed: int = 2026
@@ -216,7 +214,6 @@ class WikipediaAdapter:
                     ),
                 )
             )
-
             if (
                 canonical_split == "train"
                 and self.config.holdout_fraction

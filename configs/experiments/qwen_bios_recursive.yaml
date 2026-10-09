@@ -15,14 +15,23 @@ generation:
   temperature: 0.9
   top_p: 0.9
   repetition_penalty: 1.1
-  max_new_tokens: 128
-  min_new_tokens: 1
+  max_new_tokens: 400
+  min_new_tokens: 5
   batch_size: 32
+  generation_prompt: |
+    Continue the following professional biography in the same factual, third-person style. Do not add questions or headings.
+  match_human_suffix_length: true
+  length_tolerance: 0.25
+  buffer_tokens: 15
   torch_dtype: auto
   device_map: auto
   add_special_tokens: false
   max_prompt_tokens: null
   keep_ineligible_human: true
+
+contamination:
+  synthetic_document_fraction: 0.25
+  stratify_by: profession_id
 
 training:
   tokenizer_name_or_path: Qwen/Qwen2.5-0.5B

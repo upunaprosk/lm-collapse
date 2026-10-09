@@ -11,21 +11,14 @@ import numpy as np
 
 @dataclass(frozen=True)
 class MMLUStatsConfig:
-    """
-    Paired significance analysis for matched MMLU evaluations.
-    """
 
     n_bootstrap: int = 10_000
     confidence_level: float = 0.99
     seed: int = 23456
     n_permutations: int = 50_000
-
     metric_name: str = "acc"
-
     require_task_match: bool = True
-
     require_hash_match: bool = True
-
     save_distribution: bool = False
 
 
@@ -67,7 +60,6 @@ class MMLUPairedStatsResult:
 
     human_correct_comparison_wrong: int
     human_wrong_comparison_correct: int
-
     significant_performance_degradation: bool
 
     task_accuracies_human: dict[str, float]
@@ -366,7 +358,6 @@ def _extract_metric(
     row: dict[str, Any],
     metric_name: str,
 ) -> float:
-
     metrics = row.get(
         "metrics"
     )
@@ -491,7 +482,6 @@ def normalize_samples(
         doc_id = _doc_id(
             row
         )
-
         key = (
             f"{task}::{doc_id}"
         )
@@ -906,7 +896,6 @@ def _binomial_tail_probability(
     k: int,
     n: int,
 ) -> float:
-
     if n == 0:
         return 1.0
 
@@ -932,9 +921,6 @@ def exact_mcnemar_pvalue(
     human_correct_comparison_wrong: int,
     human_wrong_comparison_correct: int,
 ) -> float:
-    """
-    Two-sided McNemar/binomial test.
-    """
 
     b = int(
         human_correct_comparison_wrong

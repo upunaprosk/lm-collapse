@@ -15,69 +15,44 @@ from collapse.training.llamafactory import (
 
 @dataclass(frozen=True)
 class TrainingBackend:
-    """
-    Training backend used by the experiment runner.
-    """
-
     config: LlamaFactoryConfig
-
-    extra_overrides: Mapping[str, Any] = field(
-        default_factory=dict
-    )
-
-    def __post_init__(self) -> None:
-        if not self.config.base_yaml_path:
-            raise ValueError(
-                "TrainingBackend requires a non-empty "
-                "LlamaFactoryConfig.base_yaml_path."
-            )
-
-        if not self.config.executable:
-            raise ValueError(
-                "TrainingBackend requires a non-empty LLaMA-Factory executable."
-            )
+    extra_overrides: Mapping[str, Any] = field(default_factory=dict)
 
     def train(
         self,
         *,
         examples: Sequence[Example],
-        init_model: str,
+        model_name_or_path: str,
         run_dir: str | Path,
         run_name: str,
         budget: TrainingBudget,
         training_seed: int,
         dry_run: bool = False,
     ) -> TrainingRun:
-        """
-        Train one model checkpoint.
-        """
-
         if not examples:
             raise ValueError(
                 "TrainingBackend.train() received an empty dataset."
             )
 
-        if not str(init_model).strip():
+        if not str(model_name_or_path).strip():
             raise ValueError(
-                "TrainingBackend.train() requires an explicit init_model."
+                "model_name_or_path must be non-empty."
             )
 
         if not str(run_name).strip():
             raise ValueError(
-                "TrainingBackend.train() requires a non-empty run_name."
+                "run_name must be non-empty."
             )
 
         return train_with_llamafactory(
             examples=examples,
-            init_model=str(init_model),
+            model_name_or_path=str(model_name_or_path),
             run_dir=run_dir,
             run_name=run_name,
             budget=budget,
             training_seed=int(training_seed),
             backend_config=self.config,
-            extra_overrides=dict(
-                self.extra_overrides
-            ),
+            extra_overrides=dict(self.extra_overrides),
             dry_run=bool(dry_run),
         )
 
@@ -85,7 +60,7 @@ class TrainingBackend:
         self,
         *,
         examples: Sequence[Example],
-        init_model: str,
+        model_name_or_path: str,
         run_dir: str | Path,
         run_name: str,
         budget: TrainingBudget,
@@ -93,7 +68,7 @@ class TrainingBackend:
     ) -> TrainingRun:
         return self.train(
             examples=examples,
-            init_model=init_model,
+            model_name_or_path=model_name_or_path,
             run_dir=run_dir,
             run_name=run_name,
             budget=budget,

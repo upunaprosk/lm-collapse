@@ -19,8 +19,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Build a training corpus from aligned human and generated "
-            "examples. Main-paper protocol uses --synthetic-fraction 1.0; "
-            "smaller values are contamination-fraction ablations."
+            "examples. Use --synthetic-fraction to set the document-level "
+            "contamination rate."
         )
     )
 

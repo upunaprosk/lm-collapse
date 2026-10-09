@@ -96,6 +96,7 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
+
 def load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config does not exist: {path}")
@@ -165,7 +166,6 @@ def resolve_model_name(
         return cli_model
 
     model_cfg = get_section(config, "model")
-
     for key in (
         "generation_checkpoint",
         "human_checkpoint",
@@ -222,6 +222,30 @@ def build_generation_config(
             generation.get(
                 "batch_size",
                 32,
+            )
+        ),
+        generation_prompt=str(
+            generation.get(
+                "generation_prompt",
+                "",
+            )
+        ),
+        match_human_suffix_length=bool(
+            generation.get(
+                "match_human_suffix_length",
+                False,
+            )
+        ),
+        length_tolerance=float(
+            generation.get(
+                "length_tolerance",
+                0.25,
+            )
+        ),
+        buffer_tokens=int(
+            generation.get(
+                "buffer_tokens",
+                15,
             )
         ),
         generation_seed=int(
@@ -306,7 +330,6 @@ def resolve_output_dir(
         )
         / f"iter_{iteration:02d}"
     )
-
 
 def ensure_output_dir(
     path: Path,
@@ -709,13 +732,40 @@ def main() -> None:
             f"{stats.median_generated_tokens:.2f}"
         )
 
+    if stats.mean_target_suffix_tokens is not None:
+        print(
+            f"  mean target suffix    "
+            f"{stats.mean_target_suffix_tokens:.2f}"
+        )
+        print(
+            f"  median target suffix  "
+            f"{stats.median_target_suffix_tokens:.2f}"
+        )
+    if stats.mean_generated_to_target_ratio is not None:
+        print(
+            f"  generated/target      "
+            f"{stats.mean_generated_to_target_ratio:.3f}"
+        )
+
     print(
         f"  empty rate            "
         f"{stats.empty_generation_rate:.4%}"
     )
     print(
+        f"  length-window failure "
+        f"{stats.length_window_failure_rate:.4%}"
+    )
+    print(
         f"  EOS termination rate  "
         f"{stats.eos_terminated_rate:.4%}"
+    )
+    print(
+        f"  sentence-boundary rate "
+        f"{stats.sentence_boundary_rate:.4%}"
+    )
+    print(
+        f"  max-length stop rate  "
+        f"{stats.max_length_stop_rate:.4%}"
     )
 
     print()

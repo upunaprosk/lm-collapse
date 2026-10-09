@@ -69,9 +69,11 @@ class BiasInBiosConfig:
         default_factory=list
     )
 
+    # Set explicitly when integer labels are not safely inferable.
+    # 0 => 0..27, 1 => 1..28.
     profession_index_base: int | None = None
 
-    # {"0": "female", "1": "male"}
+    # Example: {"0": "female", "1": "male"}
     gender_map: dict[str, str] | None = None
 
 
@@ -122,7 +124,6 @@ class BiasInBiosAdapter:
                     pid,
                     profession_display(pid),
                 )
-
             try:
                 raw = int(raw)
             except ValueError as e:

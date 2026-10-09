@@ -21,20 +21,18 @@ from collapse.training.budget import (
 
 @dataclass(frozen=True)
 class LlamaFactoryConfig:
-
     base_yaml_path: str
     executable: str = "llamafactory-cli"
 
     text_column: str = "text"
     dataset_prompt_field: str = "prompt"
-
     overwrite_output_dir: bool = False
     stream_logs: bool = True
 
 
 @dataclass(frozen=True)
 class TrainingRun:
-    init_model: str
+    model_name_or_path: str
     output_dir: str
     runtime_yaml: str
     dataset_dir: str
@@ -132,7 +130,6 @@ def prepare_private_dataset(
     run_name: str,
     config: LlamaFactoryConfig,
 ) -> tuple[str, Path]:
-
     run_dir = Path(run_dir)
 
     dataset_dir = (
@@ -196,7 +193,7 @@ def load_base_yaml(
 
 def build_runtime_config(
     *,
-    init_model: str,
+    model_name_or_path: str,
     dataset_name: str,
     dataset_dir: str | Path,
     output_dir: str | Path,
@@ -205,13 +202,13 @@ def build_runtime_config(
     backend_config: LlamaFactoryConfig,
     extra_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-
     cfg = load_base_yaml(
         backend_config.base_yaml_path
     )
 
+    # Scientific state: always explicit.
     cfg["model_name_or_path"] = (
-        init_model
+        model_name_or_path
     )
 
     cfg["dataset"] = dataset_name
@@ -307,7 +304,6 @@ def validate_budget_matches_runtime(
     runtime_cfg: dict[str, Any],
     budget: TrainingBudget,
 ) -> None:
-
     checks = {
         "cutoff_len": (
             budget.cutoff_len
@@ -406,7 +402,7 @@ def save_training_manifest(
     *,
     path: str | Path,
     run_name: str,
-    init_model: str,
+    model_name_or_path: str,
     training_seed: int,
     dataset_name: str,
     dataset_dir: str | Path,
@@ -420,7 +416,7 @@ def save_training_manifest(
 
     manifest = {
         "run_name": run_name,
-        "init_model": init_model,
+        "model_name_or_path": model_name_or_path,
         "training_seed": training_seed,
         "dataset_name": dataset_name,
         "dataset_dir": str(
@@ -454,11 +450,10 @@ def save_training_manifest(
             ensure_ascii=False,
         )
 
-
 def train_with_llamafactory(
     *,
     examples: Sequence[Example],
-    init_model: str,
+    model_name_or_path: str,
     run_dir: str | Path,
     run_name: str,
     budget: TrainingBudget,
@@ -467,7 +462,6 @@ def train_with_llamafactory(
     extra_overrides: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> TrainingRun:
-
     if not examples:
         raise ValueError(
             "Cannot train on an empty dataset."
@@ -493,7 +487,6 @@ def train_with_llamafactory(
             backend_config.overwrite_output_dir
         ),
     )
-
     (
         dataset_name,
         dataset_dir,
@@ -503,7 +496,6 @@ def train_with_llamafactory(
         run_name=run_name,
         config=backend_config,
     )
-
     dataset_report = (
         report_dataset_against_budget(
             examples=examples,
@@ -522,7 +514,7 @@ def train_with_llamafactory(
     )
     runtime_cfg = (
         build_runtime_config(
-            init_model=init_model,
+            model_name_or_path=model_name_or_path,
             dataset_name=dataset_name,
             dataset_dir=dataset_dir,
             output_dir=checkpoint_dir,
@@ -553,13 +545,11 @@ def train_with_llamafactory(
         runtime_cfg,
         runtime_yaml,
     )
-
     shutil.copy2(
         backend_config.base_yaml_path,
         run_dir
         / "train_template.yaml",
     )
-
     manifest_path = (
         run_dir
         / "training_manifest.json"
@@ -568,7 +558,7 @@ def train_with_llamafactory(
     save_training_manifest(
         path=manifest_path,
         run_name=run_name,
-        init_model=init_model,
+        model_name_or_path=model_name_or_path,
         training_seed=training_seed,
         dataset_name=dataset_name,
         dataset_dir=dataset_dir,
@@ -582,7 +572,6 @@ def train_with_llamafactory(
             backend_config
         ),
     )
-
     return_code = run_llamafactory(
         runtime_yaml=runtime_yaml,
         backend_config=(
@@ -592,7 +581,7 @@ def train_with_llamafactory(
     )
 
     return TrainingRun(
-        init_model=init_model,
+        model_name_or_path=model_name_or_path,
         output_dir=str(
             checkpoint_dir.resolve()
         ),

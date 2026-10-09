@@ -5,12 +5,13 @@ base_protocol: configs/protocols/main_bios.yaml
 synthetic_document_fractions:
   - 0.25
   - 0.50
-  - 0.75
   - 1.00
 
 fixed:
   temperature: 0.9
-  target_generated_token_fraction_within_selected_documents: 0.50
+  seed_length_reference_tokens: 30
+  length_matching_to_human_suffix: true
+  length_tolerance: 0.25
   iterations: 4
 
 sampling:
