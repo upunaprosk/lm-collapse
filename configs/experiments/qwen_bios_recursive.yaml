@@ -15,7 +15,7 @@ generation:
   temperature: 0.9
   top_p: 0.9
   repetition_penalty: 1.1
-  max_new_tokens: 256
+  max_new_tokens: 128
   min_new_tokens: 1
   batch_size: 32
   torch_dtype: auto
