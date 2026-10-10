@@ -22,3 +22,4 @@ plot_loss: true
 
 preprocessing_num_workers: 8
 overwrite_cache: false
+report_to: none
