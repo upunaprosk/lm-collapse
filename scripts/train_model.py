@@ -573,14 +573,12 @@ def main() -> None:
         path=args.run_dir / "launcher_manifest.json",
         config_path=args.config,
         input_path=args.input,
-        model_name_or_path=args.init_model,
+        init_model=args.init_model,
         run_name=args.run_name,
         training_seed=training_seed,
         budget_path=args.budget,
         budget_status=budget_status,
-        tokenizer_name_or_path=(
-            tokenizer_name
-        ),
+        tokenizer_name_or_path=tokenizer_name,
         dry_run=args.dry_run,
     )
 

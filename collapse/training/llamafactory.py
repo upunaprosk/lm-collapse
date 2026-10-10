@@ -248,6 +248,8 @@ def build_runtime_config(
             extra_overrides
         )
 
+    cfg["report_to"] = "none"
+
     return cfg
 
 
