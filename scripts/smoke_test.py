@@ -45,8 +45,8 @@ DEFAULT_CONFIG = "configs/experiments/qwen_bios_recursive.yaml"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Cheap end-to-end integration smoke test for the fairness-"
-            "collapse pipeline. By default this performs preflight checks "
+            "End-to-end integration smoke test for the fairness-"
+            "collapse pipeline. By default this performs first checks "
             "and creates a one-step LLaMA-Factory DRY-RUN config. Add "
             "--execute for actual generation + one optimizer step + "
             "checkpoint reload + tiny evaluation."
@@ -804,7 +804,6 @@ def main() -> None:
 
         eval_source = (
             "tiny training subset "
-            "(integration-only fallback; not a scientific heldout metric)"
         )
 
     tiny_eval_path = (
@@ -952,7 +951,7 @@ def main() -> None:
 
         print()
         print("=" * 72)
-        print("SMOKE PREFLIGHT PASSED")
+        print("SMOKE First check PASSED")
         print("=" * 72)
         print(
             "No model generation/training was executed."
@@ -964,9 +963,6 @@ def main() -> None:
             f"Inspect dataset info: {dataset_info}"
         )
         print()
-        print(
-            "When those look correct, rerun the same command with --execute."
-        )
         return
 
     generation_cfg_raw = section(
@@ -1391,10 +1387,6 @@ def main() -> None:
         f"Report:              {report_path}"
     )
     print()
-    print(
-        "This validates plumbing only. Delete runs/_smoke_test afterward; "
-        "none of these metrics belong in the paper."
-    )
 
 
 if __name__ == "__main__":
