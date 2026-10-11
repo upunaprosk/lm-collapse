@@ -48,7 +48,7 @@ training:
     overwrite_output_dir: false
     stream_logs: true
   extra_overrides:
-    learning_rate: 5.0e-05
+    learning_rate: 2.0e-05
     warmup_ratio: 0.1
     weight_decay: 0.1
     lr_scheduler_type: cosine
