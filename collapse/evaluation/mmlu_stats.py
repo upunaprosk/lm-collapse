@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
@@ -296,9 +297,13 @@ def _task_name(
     )
 
     if source:
-        return Path(
-            str(source)
-        ).stem
+        stem = Path(str(source)).stem
+        if stem.startswith("samples_"):
+            stem = stem[len("samples_"):]
+        # lm-eval appends a run timestamp to sample filenames; strip it so that
+        # H and R evaluations of the same task align across separate runs.
+        stem = re.sub(r"_\d{4}-\d{2}-\d{2}T.*$", "", stem)
+        return stem
 
     return "unknown"
 

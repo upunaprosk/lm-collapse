@@ -43,23 +43,11 @@ def build_training_dataset(
     if config is None:
         config = BuildDatasetConfig()
 
-    if not (
-        0.0
-        <= config.synthetic_fraction
-        <= 1.0
-    ):
-        raise ValueError(
-            "synthetic_fraction must be in [0, 1]."
-        )
+    if not 0.0 <= config.synthetic_fraction <= 1.0:
+        raise ValueError("synthetic_fraction must be in [0, 1].")
 
-    human = _index(
-        human_examples,
-        "human",
-    )
-    generated = _index(
-        generated_examples,
-        "generated",
-    )
+    human = _index(human_examples, "human")
+    generated = _index(generated_examples, "generated")
 
     if set(human) != set(generated):
         raise ValueError(
@@ -68,106 +56,87 @@ def build_training_dataset(
 
     eligible_generated = [
         example_id
-        for example_id, generated_example
-        in generated.items()
+        for example_id, generated_example in generated.items()
         if generated_example.source == "synthetic"
-        and generated_example.synthetic_suffix
-        is not None
+        and generated_example.synthetic_suffix is not None
     ]
 
-    if config.synthetic_fraction >= 1.0:
-        selected = set(
-            eligible_generated
-        )
-    elif config.synthetic_fraction <= 0.0:
-        selected = set()
+    requested_n = round(
+        len(human_examples) * config.synthetic_fraction
+    )
+    target_n = min(requested_n, len(eligible_generated))
+    rng = random.Random(config.seed)
+
+    if target_n <= 0:
+        selected: set[str] = set()
+    elif config.stratify_by_metadata_key is None:
+        candidates = list(eligible_generated)
+        rng.shuffle(candidates)
+        selected = set(candidates[:target_n])
     else:
-        rng = random.Random(
-            config.seed
-        )
+        key = config.stratify_by_metadata_key
+        all_groups: dict[str, list[str]] = {}
+        eligible_groups: dict[str, list[str]] = {}
 
-        if (
-            config.stratify_by_metadata_key
-            is None
-        ):
-            candidates = list(
-                eligible_generated
+        for example_id, human_example in human.items():
+            group = str(human_example.metadata.get(key))
+            all_groups.setdefault(group, []).append(example_id)
+
+        for example_id in eligible_generated:
+            group = str(human[example_id].metadata.get(key))
+            eligible_groups.setdefault(group, []).append(example_id)
+
+        # Desired quotas preserve the HUMAN corpus stratum proportions.
+        raw_quota = {
+            group: target_n * len(ids) / len(human_examples)
+            for group, ids in all_groups.items()
+        }
+        quota = {
+            group: min(
+                int(raw_quota[group]),
+                len(eligible_groups.get(group, [])),
             )
-            rng.shuffle(
-                candidates
+            for group in all_groups
+        }
+
+        # Allocate the remainder deterministically while respecting capacity.
+        remaining = target_n - sum(quota.values())
+        while remaining > 0:
+            possible = [
+                group
+                for group in all_groups
+                if quota[group] < len(eligible_groups.get(group, []))
+            ]
+            if not possible:
+                break
+            group = max(
+                possible,
+                key=lambda g: (
+                    raw_quota[g] - quota[g],
+                    -quota[g] / max(len(all_groups[g]), 1),
+                    g,
+                ),
             )
+            quota[group] += 1
+            remaining -= 1
 
-            n = round(
-                len(candidates)
-                * config.synthetic_fraction
-            )
-            selected = set(
-                candidates[:n]
-            )
-        else:
-            groups = {}
+        selected = set()
+        for group in sorted(eligible_groups):
+            ids = list(eligible_groups[group])
+            rng.shuffle(ids)
+            selected.update(ids[: quota.get(group, 0)])
 
-            for example_id in (
-                eligible_generated
-            ):
-                value = human[
-                    example_id
-                ].metadata.get(
-                    config.stratify_by_metadata_key
-                )
-
-                groups.setdefault(
-                    str(value),
-                    [],
-                ).append(
-                    example_id
-                )
-
-            selected = set()
-
-            for group_ids in groups.values():
-                group_ids = list(
-                    group_ids
-                )
-                rng.shuffle(
-                    group_ids
-                )
-
-                n = round(
-                    len(group_ids)
-                    * config.synthetic_fraction
-                )
-
-                selected.update(
-                    group_ids[:n]
-                )
-
-    output = []
-
+    output: list[Example] = []
     for human_example in human_examples:
         if human_example.id in selected:
-            out = deepcopy(
-                generated[
-                    human_example.id
-                ]
-            )
-            out.metadata = dict(
-                out.metadata
-            )
-            out.metadata[
-                "training_dataset_selected_synthetic"
-            ] = True
+            out = deepcopy(generated[human_example.id])
+            out.metadata = dict(out.metadata)
+            out.metadata["training_dataset_selected_synthetic"] = True
         else:
-            out = deepcopy(
-                human_example
-            )
-            out.metadata = dict(
-                out.metadata
-            )
-            out.metadata[
-                "training_dataset_selected_synthetic"
-            ] = False
-
+            out = deepcopy(human_example)
+            out.metadata = dict(out.metadata)
+            out.metadata["training_dataset_selected_synthetic"] = False
         output.append(out)
 
     return output
+

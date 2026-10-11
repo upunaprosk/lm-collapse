@@ -245,12 +245,12 @@ def save_experiment_manifest(
         ),
         "protocol": {
             "human_branch": (
-                "H_t = Train(H_{t-1}, D_human)"
+                "H = Train(H_0, D_human) once; fixed comparator for all t"
             ),
             "recursive_branch": (
-                "D_gen,t = Generate(R_{t-1}, frozen human prefixes); "
+                "D_gen,t = Generate(R_{t-1}, frozen human prefixes), with R_0=H_0; "
                 "D_mix,t = Mix(D_human, D_gen,t, fixed synthetic fraction); "
-                "R_t = Train(R_{t-1}, D_mix,t)"
+                "R_t = Train(H_0, D_mix,t) with a matched fixed training seed"
             ),
             "prefix_policy": (
                 "Fixed once from human training data; identical raw "
@@ -332,11 +332,7 @@ def run_human_trajectory(
     budget: TrainingBudget,
     run_root: Path,
 ) -> list[IterationRecord]:
-
-    records: list[
-        IterationRecord
-    ] = []
-
+    """Train one fixed human comparator H from the frozen H_0 checkpoint."""
     if config.trainer is None:
         raise ValueError(
             "RecursiveExperimentConfig.trainer must be provided."
@@ -347,98 +343,69 @@ def run_human_trajectory(
         extra_overrides=config.training_overrides,
     )
 
-    previous_checkpoint = (
-        config.human_checkpoint
-    )
+    iteration = 1
+    iteration_dir = run_root / "human" / "iter_01"
+    checkpoint = iteration_dir / "checkpoint"
+    train_seed = human_training_seed(config.seed, 1)
 
-    branch_root = (
-        run_root / "human"
-    )
-
-    for iteration in range(
-        1,
-        config.num_iterations + 1,
-    ):
+    if (checkpoint / "config.json").exists():
         print()
         print("=" * 72)
-        print(
-            f"HUMAN CONTROL — ITERATION {iteration}"
-        )
+        print("HUMAN CONTROL — FIXED H [EXISTING CHECKPOINT — SKIP]")
         print("=" * 72)
-
-        iteration_dir = (
-            branch_root
-            / f"iter_{iteration:02d}"
-        )
-
-        train_seed = (
-            human_training_seed(
-                config.seed,
-                iteration,
-            )
-        )
-
-        run_name = (
-            f"{config.experiment_name}"
-            f"__seed{config.seed}"
-            f"__human"
-            f"__iter{iteration:02d}"
-        )
-
-        train_run = (
-            backend.train(
-                examples=human_examples,
-                model_name_or_path=(
-                    previous_checkpoint
-                ),
-                run_dir=iteration_dir,
-                run_name=run_name,
-                budget=budget,
-                training_seed=train_seed,
-            )
-        )
-
         record = IterationRecord(
             branch="human",
-            iteration=iteration,
-
-            input_checkpoint=(
-                previous_checkpoint
-            ),
-            output_checkpoint=(
-                train_run.output_dir
-            ),
-
-            training_data=str(
-                Path(
-                    config.prepared_train_path
-                ).resolve()
-            ),
-
+            iteration=1,
+            input_checkpoint=config.human_checkpoint,
+            output_checkpoint=str(checkpoint.resolve()),
+            training_data=str(Path(config.prepared_train_path).resolve()),
             generation_dir=None,
-            train_dir=str(
-                iteration_dir.resolve()
-            ),
-
+            train_dir=str(iteration_dir.resolve()),
             generation_seed=None,
             training_seed=train_seed,
         )
+        return [record]
 
-        records.append(
-            record
+    if iteration_dir.exists() and any(iteration_dir.iterdir()):
+        raise FileExistsError(
+            "Found a partial fixed-human run without a completed checkpoint: "
+            f"{iteration_dir}\nRefusing to overwrite it automatically."
         )
 
-        previous_checkpoint = (
-            train_run.output_dir
-        )
+    print()
+    print("=" * 72)
+    print("HUMAN CONTROL — FIXED H")
+    print("=" * 72)
 
-        save_progress(
-            run_root=run_root,
-            human_records=records,
-            recursive_records=[],
-        )
+    run_name = (
+        f"{config.experiment_name}__seed{config.seed}__human__fixed"
+    )
+    train_run = backend.train(
+        examples=human_examples,
+        model_name_or_path=config.human_checkpoint,
+        run_dir=iteration_dir,
+        run_name=run_name,
+        budget=budget,
+        training_seed=train_seed,
+    )
 
-    return records
+    record = IterationRecord(
+        branch="human",
+        iteration=1,
+        input_checkpoint=config.human_checkpoint,
+        output_checkpoint=train_run.output_dir,
+        training_data=str(Path(config.prepared_train_path).resolve()),
+        generation_dir=None,
+        train_dir=str(iteration_dir.resolve()),
+        generation_seed=None,
+        training_seed=train_seed,
+    )
+    save_progress(
+        run_root=run_root,
+        human_records=[record],
+        recursive_records=[],
+    )
+    return [record]
 
 def generation_config_for_iteration(
     base: GenerationConfig,
@@ -489,10 +456,14 @@ def run_recursive_trajectory(
     run_root: Path,
     existing_human_records: Sequence[IterationRecord],
 ) -> list[IterationRecord]:
+    """Recursive data contamination with fixed model initialization.
 
-    records: list[
-        IterationRecord
-    ] = []
+    R_0 is config.human_checkpoint.  R_{t-1} generates the synthetic
+    continuations for iteration t, but every R_t is trained fresh from R_0.
+    The same optimizer/data seed as the fixed human comparator is reused so
+    the H-vs-R_t difference is attributable to the training corpus.
+    """
+    records: list[IterationRecord] = []
 
     if config.trainer is None:
         raise ValueError(
@@ -504,72 +475,80 @@ def run_recursive_trajectory(
         extra_overrides=config.training_overrides,
     )
 
-    previous_checkpoint = (
-        config.human_checkpoint
-    )
+    generation_checkpoint = config.human_checkpoint
+    branch_root = run_root / "recursive"
+    matched_train_seed = human_training_seed(config.seed, 1)
 
-    branch_root = (
-        run_root / "recursive"
-    )
+    for iteration in range(1, config.num_iterations + 1):
+        iteration_dir = branch_root / f"iter_{iteration:02d}"
+        generation_dir = iteration_dir / "generation"
+        train_dir = iteration_dir / "train"
+        checkpoint = train_dir / "checkpoint"
+        training_data_path = generation_dir / "training_mix.jsonl"
 
-    for iteration in range(
-        1,
-        config.num_iterations + 1,
-    ):
+        generation_seed = recursive_generation_seed(
+            config.seed,
+            iteration,
+        )
+
+        # Resume completed iterations without regenerating or retraining.
+        if (checkpoint / "config.json").exists():
+            if not training_data_path.exists():
+                raise FileNotFoundError(
+                    "Recursive checkpoint exists but its frozen training mix "
+                    f"is missing: {training_data_path}"
+                )
+            print()
+            print("=" * 72)
+            print(
+                f"RECURSIVE — ITERATION {iteration} "
+                "[EXISTING CHECKPOINT — SKIP]"
+            )
+            print("=" * 72)
+            record = IterationRecord(
+                branch="recursive",
+                iteration=iteration,
+                input_checkpoint=config.human_checkpoint,
+                output_checkpoint=str(checkpoint.resolve()),
+                training_data=str(training_data_path.resolve()),
+                generation_dir=str(generation_dir.resolve()),
+                train_dir=str(train_dir.resolve()),
+                generation_seed=generation_seed,
+                training_seed=matched_train_seed,
+            )
+            records.append(record)
+            generation_checkpoint = str(checkpoint.resolve())
+            continue
+
+        if iteration_dir.exists() and any(iteration_dir.iterdir()):
+            raise FileExistsError(
+                "Found a partial recursive iteration without a completed "
+                f"checkpoint: {iteration_dir}\n"
+                "Refusing to overwrite it automatically."
+            )
+
         print()
         print("=" * 72)
-        print(
-            f"RECURSIVE — ITERATION {iteration}"
-        )
+        print(f"RECURSIVE — ITERATION {iteration}")
         print("=" * 72)
+        print(f"Generation model: {generation_checkpoint}")
+        print(f"Training init:    {config.human_checkpoint}")
 
-        iteration_dir = (
-            branch_root
-            / f"iter_{iteration:02d}"
+        generation_cfg = generation_config_for_iteration(
+            config.generation,
+            generation_seed=generation_seed,
         )
-
-        generation_dir = (
-            iteration_dir
-            / "generation"
+        generation_result = generate_seeded_dataset(
+            examples=human_examples,
+            model_name_or_path=generation_checkpoint,
+            iteration=iteration,
+            config=generation_cfg,
         )
-
-        generation_seed = (
-            recursive_generation_seed(
-                config.seed,
-                iteration,
-            )
-        )
-
-        train_seed = (
-            recursive_training_seed(
-                config.seed,
-                iteration,
-            )
-        )
-
-        generation_cfg = (
-            generation_config_for_iteration(
-                config.generation,
-                generation_seed=(
-                    generation_seed
-                ),
-            )
-        )
-        generation_result = (
-            generate_seeded_dataset(
-                examples=human_examples,
-                model_name_or_path=(
-                    previous_checkpoint
-                ),
-                iteration=iteration,
-                config=generation_cfg,
-            )
-        )
-
         save_generation_result(
             generation_result,
             generation_dir,
         )
+
         mix_config = BuildDatasetConfig(
             synthetic_fraction=config.dataset_mix.synthetic_fraction,
             seed=config.dataset_mix.seed + iteration,
@@ -577,15 +556,10 @@ def run_recursive_trajectory(
                 config.dataset_mix.stratify_by_metadata_key
             ),
         )
-
         training_examples = build_training_dataset(
             human_examples=human_examples,
             generated_examples=generation_result.examples,
             config=mix_config,
-        )
-
-        training_data_path = (
-            generation_dir / "training_mix.jsonl"
         )
         save_examples_jsonl(
             training_examples,
@@ -603,78 +577,42 @@ def run_recursive_trajectory(
                 "num_synthetic_examples": num_synthetic_training,
                 "realized_synthetic_document_fraction": (
                     num_synthetic_training / len(training_examples)
-                    if training_examples
-                    else 0.0
+                    if training_examples else 0.0
                 ),
             },
             generation_dir / "training_mix_manifest.json",
         )
 
-        train_dir = (
-            iteration_dir / "train"
-        )
-
         run_name = (
-            f"{config.experiment_name}"
-            f"__seed{config.seed}"
-            f"__recursive"
-            f"__iter{iteration:02d}"
+            f"{config.experiment_name}__seed{config.seed}"
+            f"__recursive__iter{iteration:02d}"
         )
-
-        train_run = (
-            backend.train(
-                examples=training_examples,
-                model_name_or_path=(
-                    previous_checkpoint
-                ),
-                run_dir=train_dir,
-                run_name=run_name,
-                budget=budget,
-                training_seed=train_seed,
-            )
+        train_run = backend.train(
+            examples=training_examples,
+            model_name_or_path=config.human_checkpoint,
+            run_dir=train_dir,
+            run_name=run_name,
+            budget=budget,
+            training_seed=matched_train_seed,
         )
 
         record = IterationRecord(
             branch="recursive",
             iteration=iteration,
-
-            input_checkpoint=(
-                previous_checkpoint
-            ),
-            output_checkpoint=(
-                train_run.output_dir
-            ),
-
-            training_data=str(
-                training_data_path.resolve()
-            ),
-
-            generation_dir=str(
-                generation_dir.resolve()
-            ),
-            train_dir=str(
-                train_dir.resolve()
-            ),
-
-            generation_seed=(
-                generation_seed
-            ),
-            training_seed=train_seed,
+            input_checkpoint=config.human_checkpoint,
+            output_checkpoint=train_run.output_dir,
+            training_data=str(training_data_path.resolve()),
+            generation_dir=str(generation_dir.resolve()),
+            train_dir=str(train_dir.resolve()),
+            generation_seed=generation_seed,
+            training_seed=matched_train_seed,
         )
-
-        records.append(
-            record
-        )
-
-        previous_checkpoint = (
-            train_run.output_dir
-        )
+        records.append(record)
+        generation_checkpoint = train_run.output_dir
 
         save_progress(
             run_root=run_root,
-            human_records=(
-                existing_human_records
-            ),
+            human_records=existing_human_records,
             recursive_records=records,
         )
 
@@ -706,22 +644,20 @@ def run_recursive_experiment(
         / f"seed_{config.seed}"
     )
 
-    if run_root.exists():
-        existing = list(
-            run_root.iterdir()
-        )
-
-        if existing:
-            raise FileExistsError(
-                f"Experiment run already exists and is non-empty: {run_root}\n"
-                "Use a different experiment name/seed or move the old run. "
-                "Automatic resume is intentionally not implemented yet."
-            )
+    already_exists = run_root.exists() and any(run_root.iterdir())
 
     run_root.mkdir(
         parents=True,
         exist_ok=True,
     )
+
+    if already_exists:
+        print()
+        print("=" * 72)
+        print("RESUMING EXISTING EXPERIMENT")
+        print("=" * 72)
+        print(f"Run root: {run_root}")
+        print("Completed checkpoints will be reused; partial iterations are not overwritten.")
     write_json(
         {
             "prepared_train_path": str(
