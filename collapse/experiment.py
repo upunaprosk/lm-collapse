@@ -382,7 +382,7 @@ def run_human_trajectory(
     )
     train_run = backend.train(
         examples=human_examples,
-        model_name_or_path=config.human_checkpoint,
+        model_name_or_path="Qwen/Qwen2.5-0.5B",
         run_dir=iteration_dir,
         run_name=run_name,
         budget=budget,
@@ -475,7 +475,7 @@ def run_recursive_trajectory(
         extra_overrides=config.training_overrides,
     )
 
-    generation_checkpoint = config.human_checkpoint
+    generation_checkpoint = existing_human_records[0].output_checkpoint
     branch_root = run_root / "recursive"
     matched_train_seed = human_training_seed(config.seed, 1)
 
@@ -532,7 +532,7 @@ def run_recursive_trajectory(
         print(f"RECURSIVE — ITERATION {iteration}")
         print("=" * 72)
         print(f"Generation model: {generation_checkpoint}")
-        print(f"Training init:    {config.human_checkpoint}")
+        print("Training init:    Qwen/Qwen2.5-0.5B")
 
         generation_cfg = generation_config_for_iteration(
             config.generation,
@@ -589,7 +589,7 @@ def run_recursive_trajectory(
         )
         train_run = backend.train(
             examples=training_examples,
-            model_name_or_path=config.human_checkpoint,
+            model_name_or_path="Qwen/Qwen2.5-0.5B",
             run_dir=train_dir,
             run_name=run_name,
             budget=budget,
