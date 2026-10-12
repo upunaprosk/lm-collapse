@@ -306,39 +306,50 @@ def validate_budget_matches_runtime(
     runtime_cfg: dict[str, Any],
     budget: TrainingBudget,
 ) -> None:
+
     checks = {
-        "cutoff_len": (
-            budget.cutoff_len
-        ),
+        "cutoff_len": budget.cutoff_len,
         "per_device_train_batch_size": (
             budget.per_device_train_batch_size
         ),
         "gradient_accumulation_steps": (
             budget.gradient_accumulation_steps
         ),
-        "max_steps": (
-            budget.max_steps
-        ),
     }
+
+    # max_steps controls training.
+    # Epoch mode: max_steps <= 0 and num_train_epochs controls training.
+    max_steps = runtime_cfg.get("max_steps")
+
+    if max_steps is not None and int(max_steps) > 0:
+        checks["max_steps"] = budget.max_steps
+    else:
+        epochs = float(
+            runtime_cfg.get("num_train_epochs", 0.0)
+        )
+
+        if epochs <= 0:
+            raise ValueError(
+                "Epoch-mode training requires "
+                "num_train_epochs > 0."
+            )
 
     mismatches = []
 
     for key, expected in checks.items():
-        actual = runtime_cfg.get(
-            key
-        )
+        actual = runtime_cfg.get(key)
 
         if actual != expected:
             mismatches.append(
-                f"{key}: expected {expected!r}, got {actual!r}"
+                f"{key}: expected {expected!r}, "
+                f"got {actual!r}"
             )
 
     if mismatches:
         raise ValueError(
-            "Runtime YAML no longer matches frozen training budget:\n  - "
+            "Runtime YAML no longer matches training setup:\n  - "
             + "\n  - ".join(mismatches)
         )
-
 
 def run_llamafactory(
     *,
